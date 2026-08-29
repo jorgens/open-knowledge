@@ -16,6 +16,8 @@ pnpm install
 pnpm run check        # lint, typecheck, and tests
 ```
 
+No `.env` is needed, but two system tools are: a **Rust toolchain** and **pkg-config**. `packages/native-config` is a Rust (napi) addon that the rest of the workspace depends on, so `pnpm run check` builds it and runs `cargo test` — without cargo, the command above fails before it reaches any TypeScript. CI provisions the same stable toolchain via `dtolnay/rust-toolchain`.
+
 Run the editor app (http://localhost:5173):
 
 ```bash
@@ -32,13 +34,20 @@ See `.env.example` for optional settings (OpenTelemetry, a custom dev port).
 
 ### Toolchain
 
-The repo pins **Node.js >=24.2.0** and **pnpm 10+** (via `.node-version`, the `packageManager` field, and `engines`). The minor matters: `engines.node` is `>=24.2.0`, not `>=24`, because the build scripts use `import.meta.main`, which landed in 24.2. Enable pnpm with `corepack enable pnpm`, or install it standalone (`npm install -g pnpm@10`). With a Node version manager, use `fnm install`, `mise install`, or `volta install node@24`. pnpm enforces the engine range (`engine-strict`), so on 24.0 or 24.1 `pnpm install` fails fast — pin 24.2.0 or newer first.
+**Node.js.** `.node-version` pins the exact version CI and every release build run on (currently 24.18.0), and `engines` declares the floor (`>=24.2.0`, not `>=24`, because the build scripts use `import.meta.main`, which landed in 24.2). Use a version manager that reads the pin — `fnm install`, `mise install`, or `volta install` from the repo root all pick it up. Note what `engine-strict` does and does not do: it fails `pnpm install` fast on Node *older* than the floor (24.0 or 24.1), but a *newer* Node (25, 26) installs and tests without complaint. That is the drift to watch — you can green a change locally on a runtime nothing ships on. Match the pin.
+
+**pnpm.** The repo needs **pnpm 10+**, pinned exactly by the `packageManager` field. Install it however you like — `brew install pnpm`, `npm install -g pnpm@10`, or your package manager of choice. You do not need to match the pinned major yourself: pnpm self-manages, so a newer pnpm on your PATH transparently delegates to the pinned version inside this repo (`pnpm -v` will report the pin here and your own version elsewhere). `corepack enable pnpm` also works, but only on Node 24 and older — corepack is no longer part of the Node distribution.
 
 TypeScript is pinned twice on purpose. `@typescript/native` is this repo's alias for `typescript@~7.0.2`, the Go compiler the gates run; it owns the `tsc` binary, so `node_modules/.bin/tsc --version` at the root reports 7. The root's own `typescript` stays on `~6.0.3` only to supply tsserver to your editor, because TypeScript 7 ships none — that is an API resolution, not the compiler. The split means 7.0-only lib typings or an unchecked side-effect import can red a gate your editor calls clean. Open your editor at the repo root, not inside a package, or its language server falls back to a machine-global TypeScript. Any package that runs `tsc` in a script declares `"typescript": "~7.0.2"` of its own; `node scripts/check-typescript-resolution.mjs`, which `pnpm run check:drift:guards` runs, enforces the *resolved* 7.0 line rather than the declared range; the range is a tilde for that reason, because a caret installs clean today and reds once 7.1 ships. Its errors say why.
 
 The base `tsconfig.json` carries three settings that red a first build. `erasableSyntaxOnly: true` makes constructor parameter properties (`constructor(private foo: string)`) an error; write the assignment out. `verbatimModuleSyntax: true` makes a plain `import { SomeType }` an error; write `import type`. `types: []` turns off automatic `@types/*` inclusion, so a package that uses Node globals lists `"types": ["node"]` in its own `tsconfig.json` and `@types/node` in its own `package.json`.
+=======
+**Node.js.** `.node-version` pins the exact version CI and every release build run on (currently 24.18.0), and `engines` declares the floor (`>=24`). Use a version manager that reads the pin — `fnm install`, `mise install`, or `volta install` from the repo root all pick it up. Note what `engine-strict` does and does not do: it fails `pnpm install` fast on Node *older* than the floor, but a *newer* Node (25, 26) installs and tests without complaint. That is the drift to watch — you can green a change locally on a runtime nothing ships on. Match the pin.
+>>>>>>> 4499d2549 (chore(ok): make .node-version the single source of truth for the toolchain)
 
-Patched dependencies (listed under `patchedDependencies` in `pnpm-workspace.yaml`, with the diffs in `patches/`) are authored with pnpm: run `pnpm patch <name>@<version>`, edit the printed temp directory, then `pnpm patch-commit <temp-dir>` to write the patch file and register it. A patch that fails to apply fails the install closed — it is never silently skipped.
+**pnpm.** The repo needs **pnpm 10+**, pinned exactly by the `packageManager` field. Install it however you like — `brew install pnpm`, `npm install -g pnpm@10`, or your package manager of choice. You do not need to match the pinned major yourself: pnpm self-manages, so a newer pnpm on your PATH transparently delegates to the pinned version inside this repo (`pnpm -v` will report the pin here and your own version elsewhere). `corepack enable pnpm` also works, but only on Node 24 and older — corepack is no longer part of the Node distribution.
+
+Patched dependencies (listed under `patchedDependencies` in `pnpm-workspace.yaml`, with the diffs in `patches/`) are authored with pnpm: run `pnpm patch <name>@<version>`, edit the printed temp directory, then `pnpm patch-commit <temp-dir>` to write the patch file and register it. A patch that fails to apply fails the install closed (`ERR_PNPM_PATCH_FAILED`) — it is never silently skipped.
 
 ### Spelling-language combobox
 
